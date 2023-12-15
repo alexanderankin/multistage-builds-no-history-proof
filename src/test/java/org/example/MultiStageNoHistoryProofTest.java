@@ -21,6 +21,8 @@ class MultiStageNoHistoryProofTest {
     };
     static final TypeReference<List<Map<String, Object>>> LIST_MAP_TYPE = new TypeReference<>() {
     };
+    static final String LAYER_1 = "06c013c4480e251e7e40da3d020358ab4e9c8d0a166e69906ab8c407ed42bb88";
+    static final String LAYER_2 = "c07241f8c133510ac4e66086c233a022568a61a0fbd5f3c75cc08392acfbcb60";
 
     // this is like our class under test
     MultiStageNoHistoryProof proof;
@@ -188,5 +190,85 @@ class MultiStageNoHistoryProofTest {
 
         // ok, so nothing there
         // maybe it's in the layers, but so far we checked in the obvious places and it is not there
+    }
+
+    @SneakyThrows
+    @Test
+    @Order(3)
+    void layerTestToSeeIfSecretInLayerMeta() {
+        var contents = proof.unTar(Objects.requireNonNull(getClass().getResourceAsStream(IMAGE_TAR)));
+        // copying this here just to reference the names
+        assertEquals(List.of(
+                        "06c013c4480e251e7e40da3d020358ab4e9c8d0a166e69906ab8c407ed42bb88/",
+                        "06c013c4480e251e7e40da3d020358ab4e9c8d0a166e69906ab8c407ed42bb88/VERSION",
+                        "06c013c4480e251e7e40da3d020358ab4e9c8d0a166e69906ab8c407ed42bb88/json",
+                        "06c013c4480e251e7e40da3d020358ab4e9c8d0a166e69906ab8c407ed42bb88/layer.tar",
+                        "42e794c9f6ee922415639843b89e4303f95fd424ecce85006f5a36b1704b93b2.json",
+                        "c07241f8c133510ac4e66086c233a022568a61a0fbd5f3c75cc08392acfbcb60/",
+                        "c07241f8c133510ac4e66086c233a022568a61a0fbd5f3c75cc08392acfbcb60/VERSION",
+                        "c07241f8c133510ac4e66086c233a022568a61a0fbd5f3c75cc08392acfbcb60/json",
+                        "c07241f8c133510ac4e66086c233a022568a61a0fbd5f3c75cc08392acfbcb60/layer.tar",
+                        "manifest.json",
+                        "repositories"
+                ),
+                contents.keySet().stream().toList());
+        assertEquals("1.0", new String(contents.get(LAYER_1 + "/VERSION")));
+        assertEquals(
+                "{\"id\":\"06c013c4480e251e7e40da3d020358ab4e9c8d0a166e69906ab8c407ed42bb88\"," +
+                        "\"created\":\"1970-01-01T00:00:00Z\",\"container_config\":" +
+                        "{\"Hostname\":\"\",\"Domainname\":\"\",\"User\":\"\"," +
+                        "\"AttachStdin\":false,\"AttachStdout\":false,\"AttachStderr\":false," +
+                        "\"Tty\":false,\"OpenStdin\":false,\"StdinOnce\":false," +
+                        "\"Env\":null,\"Cmd\":null," +
+                        "\"Image\":\"\"," +
+                        "\"Volumes\":null," +
+                        "\"WorkingDir\":\"\",\"Entrypoint\":null,\"OnBuild\":null,\"Labels\":null}," +
+                        "\"os\":\"linux\"}",
+                new String(contents.get(LAYER_1 + "/json")));
+
+        assertEquals(8019456, contents.get(LAYER_1 + "/layer.tar").length);
+
+        assertEquals("1.0", new String(contents.get(LAYER_2 + "/VERSION")));
+        assertEquals(
+                "{\"id\":\"c07241f8c133510ac4e66086c233a022568a61a0fbd5f3c75cc08392acfbcb60\"," +
+                        "\"parent\":\"06c013c4480e251e7e40da3d020358ab4e9c8d0a166e69906ab8c407ed42bb88\"," +
+                        "\"created\":\"2023-12-15T16:51:25.457828419Z\",\"container_config\":" +
+                        "{\"Hostname\":\"\",\"Domainname\":\"\",\"User\":\"\"," +
+                        "\"AttachStdin\":false,\"AttachStdout\":false,\"AttachStderr\":false,\"Tty\":false," +
+                        "\"OpenStdin\":false,\"StdinOnce\":false," +
+                        "\"Env\":null," +
+                        "\"Cmd\":null," +
+                        "\"Image\":\"\"," +
+                        "\"Volumes\":null," +
+                        "\"WorkingDir\":\"\",\"Entrypoint\":null,\"OnBuild\":null,\"Labels\":null}," +
+                        "\"config\":" +
+                        "{\"Hostname\":\"\",\"Domainname\":\"\",\"User\":\"\"," +
+                        "\"AttachStdin\":false,\"AttachStdout\":false,\"AttachStderr\":false," +
+                        "\"Tty\":false,\"OpenStdin\":false,\"StdinOnce\":false," +
+                        "\"Env\":[\"PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin\"],\"Cmd\":[\"/bin/sh\"]," +
+                        "\"Image\":\"\",\"Volumes\":null,\"WorkingDir\":\"\",\"Entrypoint\":null," +
+                        "\"OnBuild\":null," +
+                        "\"Labels\":null}," +
+                        "\"architecture\":\"arm64\"," +
+                        "\"variant\":\"v8\"," +
+                        "\"os\":\"linux\"}",
+                new String(contents.get(LAYER_2 + "/json")));
+        assertEquals(2048, contents.get(LAYER_2 + "/layer.tar").length);
+    }
+
+    @SneakyThrows
+    @Test
+    @Order(4)
+    void layerTestToSeeIfSecretInLayerContent() {
+        var contents = proof.unTar(Objects.requireNonNull(getClass().getResourceAsStream(IMAGE_TAR)));
+
+        // contents of second layer are just the public parts:
+        Map<String, byte[]> stringMap = proof.unTar(new ByteArrayInputStream(contents.get(LAYER_2 + "/layer.tar")));
+        assertEquals(1, stringMap.size());
+        assertEquals("something public\n", new String(stringMap.get("data.txt")));
+
+        // contents of first layer are just the alpine base image.
+        // details omitted for now
+        assertEquals(527, proof.unTar(new ByteArrayInputStream(contents.get(LAYER_1 + "/layer.tar"))).size());
     }
 }
